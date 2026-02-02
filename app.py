@@ -15,6 +15,7 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import io
 
 st.set_page_config(page_title="Keepa Excel結合ツール", page_icon="📊", layout="wide")
@@ -158,14 +159,20 @@ if st.session_state.merged_df is not None:
         min_date = st.session_state.merged_df[date_column].min().date()
         max_date = st.session_state.merged_df[date_column].max().date()
 
+        # デフォルト開始日: 12ヶ月前の月初
+        today = datetime.now().date()
+        default_start = (today.replace(day=1) - relativedelta(months=12))
+        # データの範囲内に収める
+        default_start = max(default_start, min_date)
+
         col_date1, col_date2 = st.columns(2)
         with col_date1:
             start_date = st.date_input(
                 "開始日",
-                value=min_date,
+                value=default_start,
                 min_value=min_date,
                 max_value=max_date,
-                help="この日付以降のデータを抽出"
+                help="この日付以降のデータを抽出（デフォルト: 12ヶ月前の月初）"
             )
         with col_date2:
             end_date = st.date_input(

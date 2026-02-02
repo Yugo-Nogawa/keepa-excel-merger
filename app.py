@@ -292,7 +292,7 @@ if st.session_state.merged_df is not None:
 
     summary_data = []
 
-    if "セール分類" in filtered_df.columns:
+    if "セール分類" in filtered_df.columns and "定価" in filtered_df.columns and "販売価格" in filtered_df.columns:
         # ASIN × セール種別でグループ化
         for asin in filtered_df["ASIN"].unique():
             asin_df = filtered_df[filtered_df["ASIN"] == asin]
@@ -305,26 +305,38 @@ if st.session_state.merged_df is not None:
 
             # セール種別ごとの集計
             for sale_type in ["MDE", "ビッグセール", "ビッグセールのアーリー"]:
-                sale_df = asin_df[asin_df["セール分類"] == sale_type]
+                sale_df = asin_df[asin_df["セール分類"] == sale_type].copy()
 
                 if len(sale_df) > 0:
-                    # 参加頻度の計算（セール期間の日数）
-                    participation_days = len(sale_df)
+                    # 参加判定: 定価から5%以上値下げした日
+                    sale_df["値下げ率"] = (sale_df["定価"] - sale_df["販売価格"]) / sale_df["定価"]
+                    participated_df = sale_df[sale_df["値下げ率"] >= 0.05]
 
-                    # 定価（最頻値または平均）
+                    # セール期間内の総日数（フィルター範囲内）
+                    total_days = len(sale_df)
+
+                    # 実際に参加した日数
+                    participated_days = len(participated_df)
+
+                    # 参加頻度（%）
+                    participation_rate = (participated_days / total_days * 100) if total_days > 0 else 0
+
+                    # 定価（参加日の最頻値または平均）
                     list_price = None
-                    if "定価" in sale_df.columns:
+                    if len(participated_df) > 0:
+                        list_price = participated_df["定価"].mode()[0] if not participated_df["定価"].mode().empty else participated_df["定価"].mean()
+                    else:
                         list_price = sale_df["定価"].mode()[0] if not sale_df["定価"].mode().empty else sale_df["定価"].mean()
 
-                    # 最安値・最高値セール売価
-                    min_price = sale_df["販売価格"].min() if "販売価格" in sale_df.columns else None
-                    max_price = sale_df["販売価格"].max() if "販売価格" in sale_df.columns else None
+                    # 最安値・最高値セール売価（参加日のみ）
+                    min_price = participated_df["販売価格"].min() if len(participated_df) > 0 else None
+                    max_price = participated_df["販売価格"].max() if len(participated_df) > 0 else None
 
                     summary_data.append({
                         "ASIN": asin,
                         "参加セール種別": sale_type,
                         "カテゴリランク（直近）": latest_subcategory_bsr,
-                        "参加頻度（日数）": participation_days,
+                        "参加頻度（%）": round(participation_rate, 1),
                         "定価": list_price,
                         "最安値セール売価": min_price,
                         "最高値セール売価": max_price

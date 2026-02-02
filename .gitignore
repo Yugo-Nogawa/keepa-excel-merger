@@ -22,7 +22,7 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Data files
-*.csv
-*.xlsx
+# Data files (exclude user data, keep config)
+keepa_merged_*.csv
+keepa-*.xlsx
 *.xls

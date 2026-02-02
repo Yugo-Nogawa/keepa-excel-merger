@@ -286,9 +286,73 @@ if st.session_state.merged_df is not None:
         else:
             st.error("⚠️ 開始日は終了日より前に設定してください")
 
+    # サマリデータの生成
+    st.divider()
+    st.subheader("📈 サマリデータ")
+
+    summary_data = []
+
+    if "セール分類" in filtered_df.columns:
+        # ASIN × セール種別でグループ化
+        for asin in filtered_df["ASIN"].unique():
+            asin_df = filtered_df[filtered_df["ASIN"] == asin]
+
+            # 直近のサブカテゴリーBSR（セール関係なく最新日付）
+            latest_subcategory_bsr = None
+            if "サブカテゴリーBSR" in asin_df.columns:
+                latest_row = asin_df.sort_values(date_column, ascending=False).iloc[0]
+                latest_subcategory_bsr = latest_row["サブカテゴリーBSR"]
+
+            # セール種別ごとの集計
+            for sale_type in ["MDE", "ビッグセール", "ビッグセールのアーリー"]:
+                sale_df = asin_df[asin_df["セール分類"] == sale_type]
+
+                if len(sale_df) > 0:
+                    # 参加頻度の計算（セール期間の日数）
+                    participation_days = len(sale_df)
+
+                    # 定価（最頻値または平均）
+                    list_price = None
+                    if "定価" in sale_df.columns:
+                        list_price = sale_df["定価"].mode()[0] if not sale_df["定価"].mode().empty else sale_df["定価"].mean()
+
+                    # 最安値・最高値セール売価
+                    min_price = sale_df["販売価格"].min() if "販売価格" in sale_df.columns else None
+                    max_price = sale_df["販売価格"].max() if "販売価格" in sale_df.columns else None
+
+                    summary_data.append({
+                        "ASIN": asin,
+                        "参加セール種別": sale_type,
+                        "カテゴリランク（直近）": latest_subcategory_bsr,
+                        "参加頻度（日数）": participation_days,
+                        "定価": list_price,
+                        "最安値セール売価": min_price,
+                        "最高値セール売価": max_price
+                    })
+
+    summary_df = pd.DataFrame(summary_data)
+
+    if not summary_df.empty:
+        st.dataframe(summary_df, use_container_width=True)
+
+        # サマリCSVダウンロード
+        summary_csv_buffer = io.StringIO()
+        summary_df.to_csv(summary_csv_buffer, index=False, encoding="utf-8-sig")
+        summary_csv_data = summary_csv_buffer.getvalue()
+
+        st.download_button(
+            label="📊 サマリCSVダウンロード",
+            data=summary_csv_data,
+            file_name=f"keepa_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    else:
+        st.info("⚠️ サマリデータがありません（セール分類が設定されていない可能性があります）")
+
     # プレビュー
     st.divider()
-    st.markdown("**プレビュー（先頭10行）**")
+    st.markdown("**詳細データプレビュー（先頭10行）**")
 
     # 日付カラムを日付のみの表示に変換
     preview_df = filtered_df.head(10).copy()
@@ -297,8 +361,9 @@ if st.session_state.merged_df is not None:
 
     st.dataframe(preview_df, use_container_width=True)
 
-    # ダウンロード
+    # 詳細データダウンロード
     st.divider()
+    st.subheader("💾 詳細データダウンロード")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_filename = f"keepa_merged_{timestamp}.csv"
 
@@ -307,7 +372,7 @@ if st.session_state.merged_df is not None:
     csv_data = csv_buffer.getvalue()
 
     st.download_button(
-        label="💾 CSVダウンロード",
+        label="💾 詳細CSVダウンロード",
         data=csv_data,
         file_name=csv_filename,
         mime="text/csv",

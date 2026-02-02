@@ -5,7 +5,7 @@ Keepa Excel結合ツール
     streamlit run app.py
 
 機能:
-    - keepa-*.xlsxファイルの自動検出
+    - keepa-*.xlsxファイルのアップロード（複数選択可）
     - ASIN列の追加（全カラムが右にシフト）
     - 複数ファイルの縦結合
     - CSVエクスポート
@@ -14,14 +14,13 @@ Keepa Excel結合ツール
 import streamlit as st
 import pandas as pd
 import openpyxl
-from pathlib import Path
 from datetime import datetime
 import io
 
 st.set_page_config(page_title="Keepa Excel結合ツール", page_icon="📊", layout="wide")
 
 st.title("📊 Keepa Excel結合ツール")
-st.markdown("複数の `keepa-*.xlsx` ファイルを検出し、ASIN列を追加して1つのCSVに結合します。")
+st.markdown("複数の `keepa-*.xlsx` ファイルをアップロードし、ASIN列を追加して1つのCSVに結合します。")
 
 # ===== セッション状態の初期化 =====
 if 'merged_df' not in st.session_state:
@@ -29,85 +28,37 @@ if 'merged_df' not in st.session_state:
 if 'file_list' not in st.session_state:
     st.session_state.file_list = []
 
-# ===== タブ構成 =====
-tab1, tab2 = st.tabs(["📁 フォルダ指定", "📤 ファイルアップロード"])
+# ===== ファイルアップロード =====
+st.subheader("📤 ファイルをアップロード")
 
-# ===== タブ1: フォルダ指定 =====
-with tab1:
-    st.subheader("フォルダパスを指定")
+uploaded_files = st.file_uploader(
+    "keepa-*.xlsx ファイルを選択してください（複数選択可）",
+    type=["xlsx"],
+    accept_multiple_files=True,
+    help="Keepa形式のExcelファイルをアップロード"
+)
 
-    default_folder = r"C:\Users\野川悠悟\Downloads"
-    folder_path = st.text_input(
-        "フォルダパスを入力してください",
-        value=default_folder,
-        help="keepa-*.xlsxファイルが保存されているフォルダを指定"
-    )
+if uploaded_files:
+    file_info = []
+    for f in uploaded_files:
+        # シート名からASINを取得（Note以外の最初のシート）
+        try:
+            sheet_names = pd.ExcelFile(f).sheet_names
+            asin = next((s for s in sheet_names if s.lower() != "note"), "不明")
+        except Exception:
+            asin = "不明"
 
-    if st.button("🔍 ファイル検出", key="detect_folder"):
-        folder = Path(folder_path)
+        size_mb = len(f.getvalue()) / (1024 * 1024)
 
-        if not folder.exists():
-            st.error(f"❌ フォルダが見つかりません: {folder_path}")
-        else:
-            # keepa-*.xlsxファイルを検出
-            keepa_files = sorted(folder.glob("keepa-*.xlsx"))
+        file_info.append({
+            "ファイル名": f.name,
+            "ASIN": asin,
+            "サイズ (MB)": f"{size_mb:.2f}",
+            "ファイルオブジェクト": f
+        })
 
-            if not keepa_files:
-                st.warning(f"⚠️ keepa-*.xlsx ファイルが見つかりませんでした: {folder_path}")
-            else:
-                file_info = []
-                for f in keepa_files:
-                    # シート名からASINを取得（Note以外の最初のシート）
-                    try:
-                        sheet_names = pd.ExcelFile(str(f)).sheet_names
-                        asin = next((s for s in sheet_names if s.lower() != "note"), "不明")
-                    except Exception:
-                        asin = "不明"
-
-                    size_mb = f.stat().st_size / (1024 * 1024)
-
-                    file_info.append({
-                        "ファイル名": f.name,
-                        "ASIN": asin,
-                        "サイズ (MB)": f"{size_mb:.2f}",
-                        "パス": str(f)
-                    })
-
-                st.session_state.file_list = file_info
-                st.success(f"✅ {len(keepa_files)} 件のファイルを検出しました")
-
-# ===== タブ2: ファイルアップロード =====
-with tab2:
-    st.subheader("ファイルを直接アップロード")
-
-    uploaded_files = st.file_uploader(
-        "keepa-*.xlsx ファイルを選択してください（複数選択可）",
-        type=["xlsx"],
-        accept_multiple_files=True,
-        help="Keepa形式のExcelファイルをアップロード"
-    )
-
-    if uploaded_files:
-        file_info = []
-        for f in uploaded_files:
-            # シート名からASINを取得（Note以外の最初のシート）
-            try:
-                sheet_names = pd.ExcelFile(f).sheet_names
-                asin = next((s for s in sheet_names if s.lower() != "note"), "不明")
-            except Exception:
-                asin = "不明"
-
-            size_mb = len(f.getvalue()) / (1024 * 1024)
-
-            file_info.append({
-                "ファイル名": f.name,
-                "ASIN": asin,
-                "サイズ (MB)": f"{size_mb:.2f}",
-                "ファイルオブジェクト": f
-            })
-
-        st.session_state.file_list = file_info
-        st.success(f"✅ {len(uploaded_files)} 件のファイルをアップロードしました")
+    st.session_state.file_list = file_info
+    st.success(f"✅ {len(uploaded_files)} 件のファイルをアップロードしました")
 
 # ===== ファイルリスト表示 =====
 if st.session_state.file_list:
@@ -131,16 +82,11 @@ if st.session_state.file_list:
                 # シート名から正確なASINを取得
                 status_text.text(f"処理中: {file_info['ファイル名']}")
 
-                # ファイル読み込み
-                if "パス" in file_info:
-                    # フォルダ指定モード
-                    wb = openpyxl.load_workbook(file_info["パス"], data_only=True)
-                else:
-                    # アップロードモード
-                    wb = openpyxl.load_workbook(
-                        io.BytesIO(file_info["ファイルオブジェクト"].getvalue()),
-                        data_only=True
-                    )
+                # ファイル読み込み（アップロードモードのみ）
+                wb = openpyxl.load_workbook(
+                    io.BytesIO(file_info["ファイルオブジェクト"].getvalue()),
+                    data_only=True
+                )
 
                 # ASINシートを探す（Noteシート以外の最初のシート = ASIN名）
                 asin = next((name for name in wb.sheetnames if name.lower() != "note"), None)
@@ -150,11 +96,8 @@ if st.session_state.file_list:
                     continue
 
                 # シート読み込み
-                if "パス" in file_info:
-                    df = pd.read_excel(file_info["パス"], sheet_name=asin)
-                else:
-                    file_info["ファイルオブジェクト"].seek(0)
-                    df = pd.read_excel(file_info["ファイルオブジェクト"], sheet_name=asin)
+                file_info["ファイルオブジェクト"].seek(0)
+                df = pd.read_excel(file_info["ファイルオブジェクト"], sheet_name=asin)
 
                 # A列にASINを追加（既存カラムを右にシフト）
                 df.insert(0, "ASIN", asin)
@@ -218,4 +161,4 @@ if st.session_state.merged_df is not None:
 
 # ===== フッター =====
 st.divider()
-st.caption("📝 Tips: フォルダ指定モードとアップロードモードを切り替えて使用できます。")
+st.caption("📝 Tips: 複数ファイルを一度に選択できます（Ctrl/Cmd + クリック）。")

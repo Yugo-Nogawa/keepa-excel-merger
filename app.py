@@ -126,6 +126,19 @@ if st.session_state.merged_df is not None:
     st.divider()
     st.subheader("📊 結合結果")
 
+    # 日付カラムの存在確認と型変換
+    date_column = None
+    if "日付" in st.session_state.merged_df.columns:
+        date_column = "日付"
+        st.session_state.merged_df[date_column] = pd.to_datetime(
+            st.session_state.merged_df[date_column], errors='coerce'
+        )
+    elif "Date" in st.session_state.merged_df.columns:
+        date_column = "Date"
+        st.session_state.merged_df[date_column] = pd.to_datetime(
+            st.session_state.merged_df[date_column], errors='coerce'
+        )
+
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("総行数", f"{len(st.session_state.merged_df):,}")
@@ -135,9 +148,51 @@ if st.session_state.merged_df is not None:
     with col3:
         st.metric("カラム数", len(st.session_state.merged_df.columns))
 
+    # 日付範囲フィルター
+    filtered_df = st.session_state.merged_df.copy()
+
+    if date_column and st.session_state.merged_df[date_column].notna().any():
+        st.divider()
+        st.subheader("📅 日付範囲フィルター")
+
+        min_date = st.session_state.merged_df[date_column].min().date()
+        max_date = st.session_state.merged_df[date_column].max().date()
+
+        col_date1, col_date2 = st.columns(2)
+        with col_date1:
+            start_date = st.date_input(
+                "開始日",
+                value=min_date,
+                min_value=min_date,
+                max_value=max_date,
+                help="この日付以降のデータを抽出"
+            )
+        with col_date2:
+            end_date = st.date_input(
+                "終了日",
+                value=max_date,
+                min_value=min_date,
+                max_value=max_date,
+                help="この日付以前のデータを抽出"
+            )
+
+        # フィルタリング実行
+        if start_date <= end_date:
+            mask = (
+                (st.session_state.merged_df[date_column].dt.date >= start_date) &
+                (st.session_state.merged_df[date_column].dt.date <= end_date)
+            )
+            filtered_df = st.session_state.merged_df[mask].copy()
+
+            if len(filtered_df) < len(st.session_state.merged_df):
+                st.info(f"📊 フィルター結果: {len(filtered_df):,} 行 / {len(st.session_state.merged_df):,} 行")
+        else:
+            st.error("⚠️ 開始日は終了日より前に設定してください")
+
     # プレビュー
+    st.divider()
     st.markdown("**プレビュー（先頭10行）**")
-    st.dataframe(st.session_state.merged_df.head(10), use_container_width=True)
+    st.dataframe(filtered_df.head(10), use_container_width=True)
 
     # ダウンロード
     st.divider()
@@ -145,7 +200,7 @@ if st.session_state.merged_df is not None:
     csv_filename = f"keepa_merged_{timestamp}.csv"
 
     csv_buffer = io.StringIO()
-    st.session_state.merged_df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+    filtered_df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
     csv_data = csv_buffer.getvalue()
 
     st.download_button(
@@ -157,7 +212,7 @@ if st.session_state.merged_df is not None:
         use_container_width=True
     )
 
-    st.info(f"📥 ダウンロードファイル名: `{csv_filename}`")
+    st.info(f"📥 ダウンロードファイル名: `{csv_filename}` ({len(filtered_df):,} 行)")
 
 # ===== フッター =====
 st.divider()

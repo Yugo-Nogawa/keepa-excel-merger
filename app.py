@@ -248,7 +248,13 @@ if st.session_state.merged_df is not None:
     # プレビュー
     st.divider()
     st.markdown("**プレビュー（先頭10行）**")
-    st.dataframe(filtered_df.head(10), use_container_width=True)
+
+    # 日付カラムを日付のみの表示に変換
+    preview_df = filtered_df.head(10).copy()
+    if date_column and date_column in preview_df.columns:
+        preview_df[date_column] = preview_df[date_column].dt.strftime('%Y-%m-%d')
+
+    st.dataframe(preview_df, use_container_width=True)
 
     # ダウンロード
     st.divider()

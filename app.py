@@ -152,6 +152,47 @@ if st.session_state.file_list:
                     # C列にセール分類を追加
                     df.insert(2, "セール分類", df[date_col].apply(classify_sale))
 
+                # カラムの整理と追加
+                # 定価: FBA価格とList価格の最大値
+                fba_col = "FBA 価格(￥)" if "FBA 価格(￥)" in df.columns else "FBA価格(￥)"
+                list_col = "List 価格(￥)" if "List 価格(￥)" in df.columns else "List価格(￥)"
+
+                if fba_col in df.columns and list_col in df.columns:
+                    df["定価"] = df[[fba_col, list_col]].max(axis=1)
+                elif fba_col in df.columns:
+                    df["定価"] = df[fba_col]
+                elif list_col in df.columns:
+                    df["定価"] = df[list_col]
+
+                # 販売価格: Buybox価格
+                buybox_col = "Buybox 価格(￥)" if "Buybox 価格(￥)" in df.columns else "Buybox価格(￥)"
+                if buybox_col in df.columns:
+                    df["販売価格"] = df[buybox_col]
+
+                # サブカテゴリーBSR: BSR[****]系カラムの最小値
+                bsr_columns = [col for col in df.columns if col.startswith("BSR[") and col.endswith("]")]
+                if bsr_columns:
+                    df["サブカテゴリーBSR"] = df[bsr_columns].min(axis=1)
+
+                # 不要カラムの削除
+                cols_to_drop = [
+                    "Buybox 価格(￥)", "Buybox価格(￥)",
+                    "価格(￥)",
+                    "Prime 価格(￥)", "Prime価格(￥)",
+                    "Coupon 価格(￥)", "Coupon価格(￥)",
+                    "Coupon 割引", "Coupon割引",
+                    "Deal 価格(￥)", "Deal価格(￥)",
+                    "Deal 価格情報", "Deal価格情報",
+                    "FBA 価格(￥)", "FBA価格(￥)",
+                    "FBM 価格(￥)", "FBM価格(￥)",
+                    "List 価格(￥)", "List価格(￥)",
+                    "販売数(子)",
+                    "評価", "評価数", "セラー数"
+                ]
+                # 存在するカラムのみ削除
+                cols_to_drop_existing = [col for col in cols_to_drop if col in df.columns]
+                df.drop(columns=cols_to_drop_existing, inplace=True)
+
                 all_data.append(df)
 
             except Exception as e:

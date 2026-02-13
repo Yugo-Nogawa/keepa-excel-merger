@@ -362,12 +362,112 @@ if st.session_state.merged_df is not None:
     else:
         st.info("⚠️ サマリデータがありません（セール分類が設定されていない可能性があります）")
 
+    # 詳細データフィルター
+    st.divider()
+    st.subheader("🔍 詳細データフィルター")
+
+    download_df = filtered_df.copy()
+
+    # BSR[***]形式のカラムを検出
+    bsr_columns = [col for col in download_df.columns if col.startswith("BSR[") and col.endswith("]")]
+
+    # 各レコードの所属カテゴリーを判定（最小BSR値を持つカテゴリー）
+    if bsr_columns:
+        def get_primary_category(row):
+            """各行について、最小BSR値を持つカテゴリー名を返す"""
+            min_val = None
+            min_category = None
+            for col in bsr_columns:
+                val = row[col]
+                if pd.notna(val) and (min_val is None or val < min_val):
+                    min_val = val
+                    min_category = col[4:-1]  # "BSR[カテゴリー名]" から カテゴリー名 を抽出
+            return min_category
+
+        download_df["サブカテゴリー"] = download_df.apply(get_primary_category, axis=1)
+
+        # カテゴリー一覧を取得（NaN除外）
+        available_categories = sorted(download_df["サブカテゴリー"].dropna().unique())
+
+        if available_categories:
+            col_cat, col_bsr = st.columns(2)
+
+            with col_cat:
+                selected_categories = st.multiselect(
+                    "属するサブカテゴリー",
+                    options=available_categories,
+                    default=None,
+                    help="複数選択可能（OR条件）。選択したカテゴリーのいずれかに所属するレコードを抽出"
+                )
+
+            with col_bsr:
+                # サブカテゴリーBSR範囲フィルター
+                if "サブカテゴリーBSR" in download_df.columns:
+                    bsr_values = download_df["サブカテゴリーBSR"].dropna()
+                    if len(bsr_values) > 0:
+                        min_bsr = int(bsr_values.min())
+                        max_bsr = int(bsr_values.max())
+
+                        bsr_range = st.slider(
+                            "サブカテゴリーBSR範囲",
+                            min_value=min_bsr,
+                            max_value=max_bsr,
+                            value=(min_bsr, max_bsr),
+                            help="この範囲内のBSRを持つレコードを抽出"
+                        )
+                    else:
+                        bsr_range = None
+                else:
+                    bsr_range = None
+
+            # フィルタリング適用
+            filter_applied = False
+
+            # カテゴリーフィルター
+            if selected_categories:
+                download_df = download_df[download_df["サブカテゴリー"].isin(selected_categories)]
+                filter_applied = True
+
+            # BSR範囲フィルター
+            if bsr_range and "サブカテゴリーBSR" in download_df.columns:
+                download_df = download_df[
+                    (download_df["サブカテゴリーBSR"] >= bsr_range[0]) &
+                    (download_df["サブカテゴリーBSR"] <= bsr_range[1])
+                ]
+                filter_applied = True
+
+            if filter_applied:
+                st.info(f"📊 フィルター結果: {len(download_df):,} 行 / {len(filtered_df):,} 行")
+
+    # 詳細データのカラムを整理（必要なカラムのみ残す）
+    detail_columns = []
+    if "ASIN" in download_df.columns:
+        detail_columns.append("ASIN")
+    if date_column:
+        detail_columns.append(date_column)
+    if "セール分類" in download_df.columns:
+        detail_columns.append("セール分類")
+    if "BSR" in download_df.columns:
+        detail_columns.append("BSR")
+    if "サブカテゴリー" in download_df.columns:
+        detail_columns.append("サブカテゴリー")
+    if "サブカテゴリーBSR" in download_df.columns:
+        detail_columns.append("サブカテゴリーBSR")
+    if "定価" in download_df.columns:
+        detail_columns.append("定価")
+    if "販売価格" in download_df.columns:
+        detail_columns.append("販売価格")
+
+    # 存在するカラムのみでフィルタリング
+    detail_columns = [col for col in detail_columns if col in download_df.columns]
+    download_df = download_df[detail_columns]
+
     # プレビュー
     st.divider()
     st.markdown("**詳細データプレビュー（先頭10行）**")
 
     # 日付カラムを日付のみの表示に変換
-    preview_df = filtered_df.head(10).copy()
+    preview_df = download_df.head(10).copy()
     if date_column and date_column in preview_df.columns:
         preview_df[date_column] = preview_df[date_column].dt.strftime('%Y-%m-%d')
 
@@ -380,7 +480,7 @@ if st.session_state.merged_df is not None:
     csv_filename = f"keepa_merged_{timestamp}.csv"
 
     csv_buffer = io.StringIO()
-    filtered_df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
+    download_df.to_csv(csv_buffer, index=False, encoding="utf-8-sig")
     csv_data = csv_buffer.getvalue()
 
     st.download_button(
@@ -392,7 +492,7 @@ if st.session_state.merged_df is not None:
         use_container_width=True
     )
 
-    st.info(f"📥 ダウンロードファイル名: `{csv_filename}` ({len(filtered_df):,} 行)")
+    st.info(f"📥 ダウンロードファイル名: `{csv_filename}` ({len(download_df):,} 行)")
 
 # ===== フッター =====
 st.divider()

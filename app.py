@@ -420,6 +420,22 @@ if st.session_state.merged_df is not None:
                 else:
                     bsr_range = None
 
+            # 大カテゴリBSR範囲フィルター
+            main_bsr_range = None
+            if "BSR" in download_df.columns:
+                main_bsr_values = download_df["BSR"].dropna()
+                if len(main_bsr_values) > 0:
+                    main_bsr_min = int(main_bsr_values.min())
+                    main_bsr_max = int(main_bsr_values.max())
+
+                    main_bsr_range = st.slider(
+                        "大カテゴリBSR範囲",
+                        min_value=main_bsr_min,
+                        max_value=main_bsr_max,
+                        value=(main_bsr_min, main_bsr_max),
+                        help="この範囲内の大カテゴリ（全体）BSRを持つレコードを抽出"
+                    )
+
             # フィルタリング適用
             filter_applied = False
 
@@ -428,11 +444,19 @@ if st.session_state.merged_df is not None:
                 download_df = download_df[download_df["サブカテゴリー"].isin(selected_categories)]
                 filter_applied = True
 
-            # BSR範囲フィルター
+            # サブカテゴリーBSR範囲フィルター
             if bsr_range and "サブカテゴリーBSR" in download_df.columns:
                 download_df = download_df[
                     (download_df["サブカテゴリーBSR"] >= bsr_range[0]) &
                     (download_df["サブカテゴリーBSR"] <= bsr_range[1])
+                ]
+                filter_applied = True
+
+            # 大カテゴリBSR範囲フィルター
+            if main_bsr_range and "BSR" in download_df.columns:
+                download_df = download_df[
+                    (download_df["BSR"] >= main_bsr_range[0]) &
+                    (download_df["BSR"] <= main_bsr_range[1])
                 ]
                 filter_applied = True
 
